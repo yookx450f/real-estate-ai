@@ -1,0 +1,82 @@
+[
+    {
+        "code": "57AC10000162",
+        "name": "民法",
+        "short_name": "民法",
+        "category": "civil_law",
+        "enabled": true,
+        "priority": 1,
+        "enacted_date": "1896-02-16",
+        "description": "私権の主体、内容、行使及び取得に関する基本原則を定める"
+    },
+    {
+        "code": "57AC10000180",
+        "name": "借地借家法",
+        "short_name": "借地借家法",
+        "category": "real_estate_law",
+        "enabled": true,
+        "priority": 2,
+        "enacted_date": "1966-05-13",
+        "description": "借地権及び借家権に関する事項を定める"
+    },
+    {
+        "code": "58AC10000174",
+        "name": "宅地建物取引業法",
+        "short_name": "宅建法",
+        "category": "real_estate_law",
+        "enabled": true,
+        "priority": 3,
+        "enacted_date": "1969-05-30",
+        "description": "宅地及び建物の取引に関する業の健全な発達を図り"
+    },
+    {
+        "code": "60AC10000217",
+        "name": "建築基準法",
+        "short_name": "建築基準法",
+        "category": "building_law",
+        "enabled": true,
+        "priority": 4,
+        "enacted_date": "1950-05-06",
+        "description": "公共の安全と公衆衛生の増進を図る"
+    },
+    {
+        "code": "62AC10000058",
+        "name": "不動産鑑定評価法",
+        "short_name": "不動産鑑定評価法",
+        "category": "appraisal_law",
+        "enabled": true,
+        "priority": 5,
+        "enacted_date": "1962-04-28",
+        "description": "不動産の鑑定評価に関する基準を定める"
+    },
+    {
+        "code": "57AC10000192",
+        "name": "建物区分所有法",
+        "short_name": "区分所有法",
+        "category": "real_estate_law",
+        "enabled": true,
+        "priority": 6,
+        "enacted_date": "1962-05-08",
+        "description": "建物の部分の区分所有等に関する事項を定める"
+    },
+    {
+        "code": "63AC10000062",
+        "name": "宅地建物取引業法施行法",
+        "short_name": "宅建施行法",
+        "category": "real_estate_law",
+        "enabled": true,
+        "priority": 7,
+        "enacted_date": "1969-05-30",
+        "description": "宅地建物取引業法の施行に必要事項を定める"
+    },
+    {
+        "code": "59AC10000148",
+        "name": "借地借家法の一部を改正する法律",
+        "short_name": "借地借家法改正",
+        "category": "real_estate_law",
+        "enabled": false,
+        "priority": 8,
+        "enacted_date": "2020-07-01",
+        "description": "借地借家法の一部を改正する法律"
+    }
+]

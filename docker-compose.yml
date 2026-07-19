@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # Nginx リバースプロキシ
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # バックエンド（FastAPI）
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend/app:/app/app
+      - ./documents:/app/documents:ro
+      - rag_data:/app/rag_data
+    depends_on:
+      - qdrant
+      - postgres
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # フロントエンド（Next.js）
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Qdrant ベクトルデータベース
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # PostgreSQL メタデータベース
+  postgres:
+    image: postgres:16-alpine
+    # ポートマッピングは削除（既存コンテナと競合するため、内部ネットワークのみ）
+    env_file:
+      - .env
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  rag_data:
+  postgres_data:
