@@ -76,19 +76,28 @@ class RAGService:
             },
         )
 
+        print(f"[store_document] {filename}: {len(chunks)}チャンクに分割")
+
         # 各チャンクをベクトル埋め込みしてQdrantに保存
         embedded_points = []
         
         # バッチで埋め込みを生成（効率化）
         chunk_texts = [chunk["text"] for chunk in chunks]
         try:
+            print(f"[store_document] 埋め込み生成開始...")
             embeddings = await llm_service.embed_texts(chunk_texts)
+            print(f"[store_document] 埋め込み生成完了: {len(embeddings)}件, 次元数: {len(embeddings[0]) if embeddings else 'N/A'}")
         except Exception as e:
+            print(f"[store_document] 埋め込み生成エラー: {str(e)}")
             raise Exception(f"埋め込み生成エラー: {str(e)}")
 
+        # ポイントIDをユニークにする（filename + chunk_indexの組み合わせ）
+        import uuid
         for i, chunk in enumerate(chunks):
+            # ユニークIDを生成（ファイル名とチャンクインデックスを使用）
+            point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{filename}_{i}"))
             point = PointStruct(
-                id=i,
+                id=point_id,
                 vector=embeddings[i],
                 payload={
                     "text": chunk["text"],
@@ -102,10 +111,12 @@ class RAGService:
 
         # Qdrantにアップロード
         if embedded_points:
+            print(f"[store_document] Qdrantにアップロード開始: {len(embedded_points)}ポイント")
             self.qdrant_client.upsert(
                 collection_name=self.collection_name,
                 points=embedded_points,
             )
+            print(f"[store_document] Qdrantにアップロード完了")
 
         return {
             "filename": filename,
