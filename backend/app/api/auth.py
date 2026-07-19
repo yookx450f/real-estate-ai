@@ -95,7 +95,7 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserRespo
     """現在のユーザーを取得"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="認証できませんでした",
+        detail="認証トークンが無効または期限切れです。再度ログインしてください。",
         headers={"WWW-Authenticate": "Bearer"},
     )
     payload = decode_access_token(token)

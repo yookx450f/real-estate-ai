@@ -17,8 +17,29 @@ class LLMService:
         self.embedding_model_name = settings.embedding_model_name
         
         # 埋め込みモデルの初期化を試みる（失敗してもフォールバックあり）
-        self.embedding_model = EmbeddingModel()
-        self._embedding_fallback = self.embedding_model._init_error is not None
+        try:
+            self.embedding_model = EmbeddingModel()
+            self._embedding_fallback = self.embedding_model._init_error is not None
+        except Exception:
+            self._embedding_fallback = True
+            self.embedding_model = None
+        
+        # 埋め込み次元数を初期化（後でasyncメソッドで設定）
+        self._dimension: int | None = None
+
+    async def initialize(self):
+        """LLMサービスの初期化（非同期）"""
+        # 埋め込み次元数を取得
+        try:
+            response = await self.client.embeddings.create(
+                model=self.embedding_model_name,
+                input=["test"],
+            )
+            self._dimension = len(response.data[0].embedding)
+            print(f"[LLM] 埋め込み次元数を取得: {self._dimension}")
+        except Exception as e:
+            print(f"[LLM] 埋め込み次元数の取得に失敗しました: {e}、デフォルト値768を使用")
+            self._dimension = 768
 
     async def generate(self, prompt: str, temperature: float = 0.1) -> str:
         """テキスト生成"""
@@ -77,7 +98,9 @@ class LLMService:
     @property
     def embedding_dimension(self) -> int:
         """埋め込みベクトルの次元数"""
-        return self.embedding_model.dimension
+        if self._dimension is None:
+            return 768  # 未初期化の場合はデフォルト値
+        return self._dimension
 
 
 # 埋め込みモデルクラス
@@ -111,8 +134,8 @@ class EmbeddingModel:
 
     @property
     def dimension(self) -> int:
-        """埋め込みベクトルの次元数"""
-        return 768  # デフォルト値
+        """埋め込みベクトルの次元数 - Ollama nomic-embed-text:latestは1024次元"""
+        return 1024
 
 
 llm_service = LLMService()

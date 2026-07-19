@@ -27,17 +27,45 @@ class RAGService:
         )
 
     def _init_collection(self):
-        """Qdrantのコレクション初期化"""
+        """Qdrantのコレクション初期化 - 次元数が一致しない場合は再作成"""
         try:
-            # コレクションが存在しない場合は作成
-            # 埋め込み次元数はモデルによって調整（japanese-stable-embed-multilingual-v3: 1024）
+            # 既存コレクションの詳細を取得
+            collection_info = self.qdrant_client.get_collection(self.collection_name)
+            existing_vectors = collection_info.config.params.vectors.size
+            
+            # 次元数が一致する場合は何もしない
+            if existing_vectors == self.embedding_dimension:
+                return
+            
+            # 次元数が一致しない場合は、コレクションを削除して再作成
+            print(f"[RAG] 次元数不一致: 既存={existing_vectors}, 预期={self.embedding_dimension}。コレクションを再作成します。")
+            self.qdrant_client.delete_collection(self.collection_name)
             self.qdrant_client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(size=self.embedding_dimension, distance=Distance.COSINE),
             )
+            print(f"[RAG] コレクションを再作成しました: {self.collection_name}")
+            
         except Exception as e:
-            # 既に存在する場合は無視
-            print(f"コレクション初期化エラー（無視）: {e}")
+            # コレクションが存在しない場合は作成
+            try:
+                self.qdrant_client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=VectorParams(size=self.embedding_dimension, distance=Distance.COSINE),
+                )
+                print(f"[RAG] コレクションを作成しました: {self.collection_name}")
+            except Exception as create_e:
+                print(f"[RAG] コレクション初期化エラー: {create_e}")
+
+    async def reset_collection(self):
+        """コレクションを完全に削除（管理者用）"""
+        try:
+            self.qdrant_client.delete_collection(self.collection_name)
+            print(f"[RAG] コレクションを削除しました: {self.collection_name}")
+        except Exception as e:
+            print(f"[RAG] コレクション削除エラー（無視）: {e}")
+        finally:
+            self._init_collection()
 
     def _chunk_text(self, text: str, metadata: dict | None = None) -> list[dict]:
         """テキストをチャンクに分割"""
@@ -62,9 +90,14 @@ class RAGService:
         text: str,
         category: str = "taikoken",
         source_url: str | None = None,
+        evidence_info: dict | None = None,
     ) -> dict:
         """ドキュメントを保存（チャンキング + ベクトル埋め込み）"""
         self._init_collection()
+
+        # エビデンス情報のデフォルト値
+        if evidence_info is None:
+            evidence_info = {}
 
         # テキストをチャンクに分割
         chunks = self._chunk_text(
@@ -73,10 +106,17 @@ class RAGService:
                 "filename": filename,
                 "category": category,
                 "source_url": source_url,
+                # エビデンス情報をメタデータに追加
+                "law_name": evidence_info.get("law_name", ""),
+                "article_number": evidence_info.get("article_number", ""),
+                "section": evidence_info.get("section", ""),
+                "document_title": evidence_info.get("document_title", filename),
+                "evidence_text": evidence_info.get("evidence_text", ""),
             },
         )
 
         print(f"[store_document] {filename}: {len(chunks)}チャンクに分割")
+        print(f"  エビデンス情報: 法令={evidence_info.get('law_name', 'N/A')}, 条文={evidence_info.get('article_number', 'N/A')}")
 
         # 各チャンクをベクトル埋め込みしてQdrantに保存
         embedded_points = []
@@ -96,6 +136,10 @@ class RAGService:
         for i, chunk in enumerate(chunks):
             # ユニークIDを生成（ファイル名とチャンクインデックスを使用）
             point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{filename}_{i}"))
+            
+            # メタデータを取得
+            chunk_meta = chunk.get("metadata", {})
+            
             point = PointStruct(
                 id=point_id,
                 vector=embeddings[i],
@@ -105,6 +149,12 @@ class RAGService:
                     "category": category,
                     "source_url": source_url,
                     "chunk_index": i,
+                    # エビデンス情報（法令名、条文番号など）
+                    "law_name": chunk_meta.get("law_name", ""),
+                    "article_number": chunk_meta.get("article_number", ""),
+                    "section": chunk_meta.get("section", ""),
+                    "document_title": chunk_meta.get("document_title", filename),
+                    "evidence_text": chunk_meta.get("evidence_text", ""),
                 },
             )
             embedded_points.append(point)
@@ -141,16 +191,25 @@ class RAGService:
             limit=top_k,
         )
 
-        # 結果を形式に変換
+        # 結果を形式に変換（エビデンス情報を強化）
         sources = []
         for hit in search_results.points:
-            sources.append({
-                "filename": hit.payload.get("filename", ""),
-                "text": hit.payload.get("text", ""),
-                "category": hit.payload.get("category", ""),
-                "source_url": hit.payload.get("source_url", ""),
+            payload = hit.payload
+            source_entry = {
+                "filename": payload.get("filename", ""),
+                "text": payload.get("text", ""),
+                "category": payload.get("category", ""),
+                "source_url": payload.get("source_url", ""),
                 "score": hit.score,
-            })
+                # エビデンス情報（完全な参照情報）
+                "full_text": payload.get("text", ""),  # 参照した全文チャンク
+                "law_name": payload.get("law_name", ""),  # 法令名
+                "article_number": payload.get("article_number", ""),  # 条文番号
+                "section": payload.get("section", ""),  # 項・号
+                "document_title": payload.get("document_title", ""),  # ドキュメントタイトル
+                "evidence_text": payload.get("evidence_text", ""),  # 根拠となる文章
+            }
+            sources.append(source_entry)
 
         return sources
 
@@ -159,30 +218,50 @@ class RAGService:
         # 1. 類似ドキュメントを検索
         sources = await self.search(query, top_k)
 
-        # 2. コンテキストを構築
+        # 2. コンテキストを構築（エビデンス情報を強化）
         context_parts = []
         for i, source in enumerate(sources):
-            context_parts.append(f"[参照{i + 1}] {source['text']}")
+            # エビデンス情報が存在する場合は、法令名と条文番号を含める
+            law_name = source.get("law_name", "")
+            article_number = source.get("article_number", "")
+            section = source.get("section", "")
+            evidence_text = source.get("evidence_text", source.get("text", ""))
+            
+            # 参照形式の構築
+            if law_name and article_number:
+                section_info = f" 第{section}号" if section else ""
+                reference_info = f"[参照{i + 1}] 法令: {law_name} 第{article_number}条{section_info}\n{evidence_text}"
+            else:
+                reference_info = f"[参照{i + 1}] {evidence_text}"
+            
+            context_parts.append(reference_info)
 
         context = "\n\n".join(context_parts)
 
-        # 3. プロンプトを構築
+        # 3. プロンプトを構築（強化版 - 法令名と条文を明記するよう指示）
         system_prompt = """あなたは不動産法律に詳しいAIアシスタントです。
 以下の参照情報に基づいて、正確な回答を行ってください。
-回答後には、使用した参照元のドキュメント名を明記してください。
 
 回答のルール:
 1. 専門用語は適切に説明する
-2. 根拠となる法令条を明記する
+2. 必ず根拠となる「法令名」と「条文番号」を明記する（例：宅地建物取引業法第33条）
 3. 不明な点は明確に「不明」とする
-4. 推測で回答しない"""
+4. 推測で回答しない
+5. 回答の最後に、使用した参照元のドキュメント名と、参照した文章の全文を明記する
+6. 具体的な条文の文章を引用して、根拠を明確に示す"""
 
         user_prompt = """以下の質問に回答してください。
 
 参照情報:
 {context}
 
-質問: {query}"""
+質問: {query}
+
+回答形式:
+1. 結論を先に伝える
+2. 根拠となる法令名と条文番号を明記
+3. 条文の内容を引用して説明
+4. 参照したドキュメント名と、参照した文章の全文を明記"""
 
         # 4. LLMに生成を依頼
         answer = await llm_service.generate(

@@ -9,6 +9,13 @@ interface Source {
   score: number
   category?: string
   source_url?: string
+  // エビデンス情報（新追加）
+  full_text?: string
+  law_name?: string
+  article_number?: string
+  section?: string
+  document_title?: string
+  evidence_text?: string
 }
 
 interface Message {
@@ -129,7 +136,12 @@ export default function ChatInterface({ accessToken, onLogout }: ChatInterfacePr
       })
 
       if (!response.ok) {
-        throw new Error('チャット処理に失敗しました')
+        // 401エラーの場合は認証エラー、それ以外のエラーは処理エラー
+        if (response.status === 401) {
+          throw new Error('認証エラー：ログインが必要です。')
+        }
+        const errorData = await response.json().catch(() => ({ detail: 'チャット処理に失敗しました' }))
+        throw new Error(errorData.detail || 'チャット処理に失敗しました')
       }
 
       const data = await response.json()
@@ -155,7 +167,7 @@ export default function ChatInterface({ accessToken, onLogout }: ChatInterfacePr
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'エラーが発生しました。もう一度お試しください。',
+        content: error instanceof Error ? error.message : 'エラーが発生しました。もう一度お試しください。',
         timestamp: new Date().toISOString(),
       }
       setMessages(prev => [...prev, errorMessage])
@@ -195,6 +207,97 @@ export default function ChatInterface({ accessToken, onLogout }: ChatInterfacePr
       e.preventDefault()
       handleSend()
     }
+  }
+
+  // 参照元情報をフォーマットして表示
+  const renderSourceInfo = (source: Source) => {
+    const hasEvidenceInfo = source.law_name || source.article_number || source.evidence_text
+    
+    return (
+      <div key={source.filename} style={{ marginBottom: '1rem' }}>
+        {/* ドキュメントタイトル */}
+        {source.document_title && (
+          <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+            {source.document_title}
+          </div>
+        )}
+        
+        {/* ファイル名 */}
+        <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+          {source.filename}
+        </div>
+        
+        {/* 関連度 */}
+        <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.25rem' }}>
+          関連度: {(source.score * 100).toFixed(1)}%
+        </div>
+        
+        {/* 出典URL */}
+        {source.source_url && (
+          <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+            出典: {source.source_url}
+          </div>
+        )}
+        
+        {/* エビデンス情報（法令名、条文番号、参照文章）*/}
+        {hasEvidenceInfo && (
+          <div style={{ 
+            marginTop: '0.5rem', 
+            padding: '0.5rem', 
+            backgroundColor: 'rgba(255,255,255,0.1)', 
+            borderRadius: '4px',
+            border: '1px solid rgba(255,255,255,0.15)'
+          }}>
+            {/* 法令名と条文番号 */}
+            {(source.law_name || source.article_number) && (
+              <div style={{ marginBottom: '0.25rem' }}>
+                <strong style={{ fontSize: '0.8rem' }}>根拠となる法令:</strong>{' '}
+                {source.law_name && <span>{source.law_name}</span>}
+                {source.law_name && source.article_number && <span> </span>}
+                {source.article_number && <span>第{source.article_number}条</span>}
+                {source.section && <span> 第{source.section}号</span>}
+              </div>
+            )}
+            
+            {/* 参照した文章の全文 */}
+            {source.evidence_text && (
+              <div style={{ marginTop: '0.25rem' }}>
+                <strong style={{ fontSize: '0.8rem' }}>参照した文章:</strong>
+                <div style={{ 
+                  marginTop: '0.25rem', 
+                  padding: '0.5rem', 
+                  backgroundColor: 'rgba(0,0,0,0.2)', 
+                  borderRadius: '3px',
+                  fontSize: '0.8rem',
+                  lineHeight: '1.6',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {source.evidence_text}
+                </div>
+              </div>
+            )}
+            
+            {/* full_text（エビデンスがない場合は代替として表示）*/}
+            {!source.evidence_text && source.full_text && (
+              <div style={{ marginTop: '0.25rem' }}>
+                <strong style={{ fontSize: '0.8rem' }}>参照した文章:</strong>
+                <div style={{ 
+                  marginTop: '0.25rem', 
+                  padding: '0.5rem', 
+                  backgroundColor: 'rgba(0,0,0,0.2)', 
+                  borderRadius: '3px',
+                  fontSize: '0.8rem',
+                  lineHeight: '1.6',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {source.full_text}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -303,13 +406,6 @@ export default function ChatInterface({ accessToken, onLogout }: ChatInterfacePr
               {isCreatingNew ? '新しいチャット' : (activeConversation?.title || 'チャット')}
             </h2>
           </div>
-          <button
-            className="btn"
-            onClick={onLogout}
-            style={{ fontSize: '0.75rem' }}
-          >
-            ログアウト
-          </button>
         </div>
 
         {/* メッセージ一覧 */}
@@ -371,21 +467,9 @@ export default function ChatInterface({ accessToken, onLogout }: ChatInterfacePr
                     {message.role === 'assistant' && message.sources && message.sources.length > 0 && (
                       <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                         <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem' }}>
-                          📚 参照元
+                          📚 参照元（エビデンス）
                         </h4>
-                        {message.sources.map((source, index) => (
-                          <div key={index} style={{ marginBottom: '0.5rem' }}>
-                            <strong>{source.filename}</strong>
-                            <p style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.25rem' }}>
-                              関連度: {(source.score * 100).toFixed(1)}%
-                            </p>
-                            {source.source_url && (
-                              <p style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                                出典: {source.source_url}
-                              </p>
-                            )}
-                          </div>
-                        ))}
+                        {message.sources.map((source, index) => renderSourceInfo(source))}
                       </div>
                     )}
                   </div>

@@ -3,12 +3,7 @@
 
 不動産の法律に詳しいAIを作るプロジェクトです。
 環境は、Docker
-LLMは、ローカルLLMで下記を使用。
-https://huggingface.co/lmstudio-community/Qwen3.6-35B-A3B-MLX-4bit
-（一旦gemmaではなく、qwen3.6を利用）
-https://huggingface.co/lmstudio-community/gemma-4-26B-A4B-it-MLX-8bit
-ベースURLは下記。
-http://192.168.188.50:1234/v1
+LLMは、ローカルLLM。
 
 ragに法律の情報、ネットにある正しいQAの情報など、
 参照元が明確で正確性のある情報をRAGに登録。

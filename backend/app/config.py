@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # JWT設定
     secret_key: str = "your-secret-key-change-in-production"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60
+    access_token_expire_minutes: int = 1440  # 24時間（デフォルト60分→1440分に延長）
 
     # 法令データ設定
     legal_data_api_url: str = "https://api.gov.go.jp/cgi-bin/search/single.cgi"
